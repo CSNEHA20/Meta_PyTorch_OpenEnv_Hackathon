@@ -1,0 +1,27 @@
+name: ambulance-dispatch-env
+version: 1.0.0
+description: multi-constraint ambulance dispatch system
+author: OpenEnv Team
+
+action_space:
+  ambulance_id: integer
+  emergency_id: string
+  hospital_id: integer
+
+observation_space:
+  ambulances: array
+  emergencies: array
+  hospitals: array
+  traffic: object
+  step: integer
+
+tasks:
+  easy:
+    max_steps: 30
+  medium:
+    max_steps: 60
+  hard:
+    max_steps: 100
+
+inference_script: inference.py
+runtime: python3
