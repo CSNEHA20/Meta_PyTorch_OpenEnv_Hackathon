@@ -1,27 +1,33 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project files
 COPY . .
 
-# Set environment variables
-ENV API_BASE_URL="http://localhost:8000"
-ENV MODEL_NAME="ambulance-rl-model"
-ENV PYTHONUNBUFFERED=1
+# Build Next.js dashboard if frontend exists
+RUN if [ -d "frontend" ]; then \
+    cd frontend && \
+    npm install && \
+    npm run build && \
+    mkdir -p /app/static && \
+    cp -r .next/static /app/static/_next/static && \
+    cp -r public/* /app/static/ 2>/dev/null || true; \
+    fi
 
-# Expose port for HuggingFace Spaces
+ENV API_BASE_URL="https://api-inference.huggingface.co/v1"
+ENV MODEL_NAME="mistralai/Mistral-7B-Instruct-v0.2"
+ENV PYTHONUNBUFFERED=1
+ENV ENABLE_WEB_INTERFACE="true"
+
 EXPOSE 7860
 
-# Default command
-CMD ["python", "inference.py"]
+CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"]

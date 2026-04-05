@@ -1,27 +1,97 @@
 name: ambulance-dispatch-env
 version: 1.0.0
-description: multi-constraint ambulance dispatch system
-author: OpenEnv Team
+description: |
+  Multi-constraint reinforcement learning environment for city-scale ambulance
+  dispatch optimisation. Agents manage a fleet of ambulances across a
+  Barabasi-Albert road network, routing to emergencies of three severity tiers
+  (CRITICAL, HIGH, NORMAL) while respecting hospital capacity limits and
+  dynamic rush-hour traffic multipliers. Reward is computed via an RFC 004
+  Rubric with nine named components for per-component training introspection.
+author: Ambulance-OpenENV Team
+documentation_url: https://github.com/your-org/ambulance-openenv
 
 action_space:
-  ambulance_id: integer
-  emergency_id: string
-  hospital_id: integer
+  type: object
+  properties:
+    ambulance_id:
+      type: integer
+      description: ID of the idle ambulance to dispatch
+    emergency_id:
+      type: string
+      description: UUID of the target unassigned emergency
+    hospital_id:
+      type: integer
+      description: ID of the destination hospital
+    reposition_node:
+      type: integer
+      description: Graph node to reposition an idle ambulance to (optional)
+    is_noop:
+      type: boolean
+      description: When true, skip dispatch and advance one simulation step
 
 observation_space:
-  ambulances: array
-  emergencies: array
-  hospitals: array
-  traffic: object
-  step: integer
+  type: object
+  properties:
+    ambulances:
+      type: array
+      description: State of every ambulance (node, FSM state, ETA, targets)
+    emergencies:
+      type: array
+      description: Active unassigned emergencies (node, severity, time remaining)
+    hospitals:
+      type: array
+      description: Hospital status (node, capacity, current occupancy)
+    traffic:
+      type: object
+      description: Traffic multipliers keyed by edge or "global"
+    step:
+      type: integer
+      description: Current simulation step counter
+    reward:
+      type: number
+      description: Step reward computed by the RFC 004 Rubric
+    done:
+      type: boolean
+      description: Whether the episode has terminated
 
 tasks:
-  easy:
+  - id: easy
+    description: >
+      Single ambulance, 1 hospital, no traffic variation.
+      Emergencies appear one at a time. Tests basic dispatch correctness.
+    difficulty: easy
     max_steps: 30
-  medium:
+    config:
+      n_ambulances: 1
+      n_hospitals: 1
+      lambda_param: 1.0
+      seed: 42
+  - id: medium
+    description: >
+      Three ambulances, 2 hospitals, mild traffic (1.0–1.3x), concurrent
+      Poisson emergencies (lambda=0.1). Tests fleet coordination and
+      hospital routing under partial congestion.
+    difficulty: medium
     max_steps: 60
-  hard:
+    config:
+      n_ambulances: 3
+      n_hospitals: 2
+      lambda_param: 0.1
+      seed: 42
+  - id: hard
+    description: >
+      Five ambulances, 3 hospitals, dynamic rush-hour traffic (1.0–2.5x),
+      Poisson emergencies (lambda=0.2), strict hospital capacity constraints,
+      full severity triage. Tests optimal resource allocation under adversarial
+      conditions.
+    difficulty: hard
     max_steps: 100
+    config:
+      n_ambulances: 5
+      n_hospitals: 3
+      lambda_param: 0.2
+      seed: 42
 
 inference_script: inference.py
-runtime: python3
+runtime: python3.11
+

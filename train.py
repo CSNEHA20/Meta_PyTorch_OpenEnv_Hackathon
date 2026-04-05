@@ -1,6 +1,9 @@
 import numpy as np
 import torch
 import os
+import argparse
+import matplotlib
+matplotlib.use("Agg")  # Non-interactive backend — safe in headless / CI environments
 import matplotlib.pyplot as plt
 
 from env.environment import AmbulanceEnv
@@ -11,6 +14,16 @@ from rl.rl_agent import DQNAgent
 from rl.demand_predictor import DemandPredictor
 
 def main():
+    # 1. PARSE CLI ARGUMENTS
+    parser = argparse.ArgumentParser(description="Train the Ambulance Dispatch DQN agent")
+    parser.add_argument("--episodes", type=int, default=3000, help="Number of training episodes")
+    parser.add_argument("--max-steps", type=int, default=150, help="Max environment steps per episode")
+    parser.add_argument("--no-dueling", action="store_true", help="Disable Dueling DQN (use StandardDQN)")
+    parser.add_argument("--no-per", action="store_true", help="Disable Prioritized Replay (use uniform)")
+    parser.add_argument("--no-soft-update", action="store_true", help="Use hard target update instead of soft")
+    parser.add_argument("--normalize-rewards", action="store_true", help="Enable z-score reward normalization")
+    args = parser.parse_args()
+
     # 2. INITIALIZE COMPONENTS
     env = AmbulanceEnv()
 
@@ -27,13 +40,20 @@ def main():
     state_size = len(state)
     action_size = mapper.size()
 
-    # Initialize DQN Agent
-    agent = DQNAgent(state_size, action_size)
+    # Initialize DQN Agent with feature flags from CLI
+    agent = DQNAgent(
+        state_size,
+        action_size,
+        use_dueling=not args.no_dueling,
+        use_per=not args.no_per,
+        use_soft_update=not args.no_soft_update,
+        normalize_rewards=args.normalize_rewards
+    )
 
     # 3. TRAINING PARAMETERS
-    episodes = 3000
+    episodes = args.episodes
     batch_size = 128
-    max_steps = 150
+    max_steps = args.max_steps
 
     agent.batch_size = batch_size
     rewards_history = []
@@ -68,6 +88,9 @@ def main():
             next_obs, reward, done, info = env.step(action)
 
             # Apply Reward Shaping
+            # Note: env.step() already includes coordination penalty and future-aware bonus.
+            # get_priority_weighted_reward scales by severity for additional signal strength.
+            # get_coordinated_reward adds coverage-diversity spread bonus (not in env.step).
             reward = agent.get_priority_weighted_reward(obs, action, reward)
             reward = agent.get_coordinated_reward(obs, action, reward)
 
@@ -79,8 +102,8 @@ def main():
             # Encode next state
             next_state = encoder.encode(next_obs)
 
-            # Store transition in replay buffer
-            agent.memory.push(state, action_index, reward, next_state, done)
+            # Store transition in replay buffer (normalises reward if flag set)
+            agent.store(state, action_index, reward, next_state, done)
 
             # Perform weight update session
             agent.train_step()
@@ -137,7 +160,9 @@ def main():
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout()
-    plt.show()
+    plt.savefig("training_curve.png", dpi=150)
+    plt.close()
+    print("Training curve saved to training_curve.png")
 
 if __name__ == "__main__":
     main()

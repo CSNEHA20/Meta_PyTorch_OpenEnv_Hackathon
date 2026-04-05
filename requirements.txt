@@ -1,4 +1,14 @@
-pydantic==2.5.2
-numpy==1.26.2
-networkx==3.2.1
+openenv-core
+pydantic>=2.5.2
+numpy>=1.26.2
+networkx>=3.2.1
+torch>=2.0.0
+matplotlib
+fastapi
+uvicorn[standard]
 openai
+scipy
+python-dotenv
+pytest
+pytest-asyncio
+httpx

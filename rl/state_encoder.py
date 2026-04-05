@@ -6,6 +6,10 @@ class StateEncoder:
     """
     High-quality state encoder for RL ambulance dispatch system.
     Converts ObservationModel into a fixed-size numerical vector.
+
+    The constructor accepts an optional `max_nodes` keyword for backward
+    compatibility with callers that pass StateEncoder(max_nodes=100).
+    The value is ignored; MAX_NODES is always 100.
     """
     
     # Feature Configuration
@@ -19,7 +23,7 @@ class StateEncoder:
     TIME_NORM = 50
     CAPACITY_NORM = 50
     
-    def __init__(self):
+    def __init__(self, max_nodes: int = None):
         # Deterministic mappings for one-hot encoding
         self.state_map = {
             AmbulanceState.IDLE: 0,

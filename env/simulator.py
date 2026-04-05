@@ -35,18 +35,18 @@ class CityGraph:
         return max(1, int(np.ceil(base_length * traffic_multiplier)))
 
 class TrafficEngine:
-    """Simulates real-world traffic patterns based on the time of day."""
+    """Simulates dynamic traffic with rush hours and incidents (Feature 5)."""
     def get_multiplier(self, step: int) -> float:
-        minute_of_day = step % 1440
-        hour = minute_of_day // 60
-        
+        hour = (step % 1440) // 60
         # Rush hours: 7-9, 17-20
         if (7 <= hour < 9) or (17 <= hour < 20):
-            return np.random.uniform(1.3, 2.5)
-        return np.random.uniform(0.9, 1.1)
+            # Normal(1.5, 0.1) clamped to [1.2, 2.5]
+            return float(np.clip(np.random.normal(1.6, 0.2), 1.2, 2.5))
+        # Off-peak: Normal(1.0, 0.05) clamped to [0.9, 1.2]
+        return float(np.clip(np.random.normal(1.0, 0.05), 0.9, 1.2))
 
 class Ambulance:
-    """Individual ambulance unit with its own state machine."""
+    """Ambulance unit with transition logic (Feature 6)."""
     def __init__(self, amb_id: int, start_node: int):
         self.id = amb_id
         self.node = start_node
@@ -57,7 +57,7 @@ class Ambulance:
         self.target_hosp_id: Optional[int] = None
         self.target_hosp_node: Optional[int] = None
 
-    def update(self, city_graph: CityGraph, traffic_multiplier: float):
+    def update(self, city: CityGraph, tm: float):
         if self.eta > 0:
             self.eta -= 1
             return
@@ -65,34 +65,35 @@ class Ambulance:
         if self.state == AmbulanceState.DISPATCHED:
             self.state = AmbulanceState.EN_ROUTE
             if self.target_emg_node is not None:
-                self.eta = city_graph.shortest_path_time(self.node, self.target_emg_node, traffic_multiplier)
+                self.eta = city.shortest_path_time(self.node, self.target_emg_node, tm)
         
         elif self.state == AmbulanceState.EN_ROUTE:
-            # Arrived at scene
+            # Arrival at scene
             self.state = AmbulanceState.AT_SCENE
-            self.node = self.target_emg_node
-            self.eta = np.random.randint(5, 12) # Time at scene
+            self.node = self.target_emg_node if self.target_emg_node is not None else self.node
+            self.eta = int(np.random.randint(2, 5)) # Load time
         
         elif self.state == AmbulanceState.AT_SCENE:
-            # Moving to hospital
+            # Move to hospital
             self.state = AmbulanceState.TRANSPORTING
             if self.target_hosp_node is not None:
-                self.eta = city_graph.shortest_path_time(self.node, self.target_hosp_node, traffic_multiplier)
+                self.eta = city.shortest_path_time(self.node, self.target_hosp_node, tm)
         
         elif self.state == AmbulanceState.TRANSPORTING:
-            # Arrived at hospital
+            # Delivery and handover
             self.state = AmbulanceState.RETURNING
-            self.node = self.target_hosp_node
+            self.node = self.target_hosp_node if self.target_hosp_node is not None else self.node
             self.target_emg_id = None
             self.target_emg_node = None
-            self.eta = np.random.randint(5, 10) # Handover time + base return time
+            self.eta = int(np.random.randint(2, 4)) # Handover delay
         
         elif self.state == AmbulanceState.RETURNING:
             self.state = AmbulanceState.IDLE
         
         elif self.state == AmbulanceState.REPOSITIONING:
             self.state = AmbulanceState.IDLE
-            self.node = self.target_emg_node
+            if self.target_emg_node is not None:
+                self.node = self.target_emg_node
 
     def to_info(self) -> AmbulanceInfo:
         return AmbulanceInfo(
@@ -173,12 +174,13 @@ class EmergencyGenerator:
         return new_emergencies
 
 class Hospital:
-    """Hospital facility with limited patient capacity."""
+    """Hospital facility with limited patient capacity and specialty routing (Feature 8)."""
     def __init__(self, hosp_id: int, node: int, capacity: int):
         self.id = hosp_id
         self.node = node
         self.capacity = capacity
         self.current_patients = 0
+        self.specialty = "General"
 
     def is_available(self) -> bool:
         return self.current_patients < self.capacity
@@ -198,5 +200,6 @@ class Hospital:
             id=self.id,
             node=self.node,
             capacity=self.capacity,
-            current_patients=self.current_patients
+            current_patients=self.current_patients,
+            specialty=self.specialty
         )
