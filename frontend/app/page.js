@@ -6,10 +6,9 @@ import CityMap from './components/CityMap'
 import AmbulanceTable from './components/AmbulanceTable'
 import RewardChart from './components/RewardChart'
 import HospitalPanel from './components/HospitalPanel'
-import { motion, AnimatePresence } from 'framer-motion'
 
 const TASKS = ['easy', 'medium', 'hard']
-const TASK_STEPS = { easy: 150, medium: 300, hard: 500 }
+const TASK_STEPS = { easy: 30, medium: 60, hard: 100 }
 const TASK_COLOR = { easy: '#10b981', medium: '#f59e0b', hard: '#ef4444' }
 
 const emptyObs = {
@@ -66,6 +65,10 @@ export default function Dashboard() {
 
   useEffect(() => { autoRef.current = autoRun }, [autoRun])
   useEffect(() => { speedRef.current = speed }, [speed])
+
+  // Auto-connect on first load
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { resetEnv() }, [])
 
   const resetEnv = useCallback(async () => {
     setStatus('INITIALIZING...')
@@ -154,7 +157,7 @@ export default function Dashboard() {
           {/* Speed */}
           <div className="flex items-center gap-2">
             <span className="panel-label">Speed</span>
-            <input type="range" min={50} max={1000} step={50} value={speed} onChange={e => setSpeed(+e.target.value)}
+            <input type="range" min={300} max={2000} step={100} value={speed} onChange={e => setSpeed(+e.target.value)}
               className="w-24 accent-blue-500" style={{ cursor: 'pointer' }} />
             <span className="text-xs font-mono" style={{ color: '#64748b', minWidth: 36 }}>{speed}ms</span>
           </div>
@@ -188,11 +191,8 @@ export default function Dashboard() {
 
       {/* ─── PROGRESS BAR ───────────────────────────────────────── */}
       <div className="flex-none h-[3px] w-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
-        <motion.div className="h-full"
-          initial={{ width: 0 }}
-          animate={{ width: `${progress}%` }}
-          transition={{ type: 'spring', stiffness: 80, damping: 20 }}
-          style={{ background: `linear-gradient(90deg, #3b82f6, #06b6d4)`, boxShadow: '0 0 12px rgba(59,130,246,0.8)' }} />
+        <div className="h-full"
+          style={{ width: `${progress}%`, background: `linear-gradient(90deg, #3b82f6, #06b6d4)`, boxShadow: '0 0 12px rgba(59,130,246,0.8)', transition: 'width 0.4s ease' }} />
       </div>
 
       {/* ─── MAIN LAYOUT ─────────────────────────────────────────── */}
@@ -253,26 +253,21 @@ export default function Dashboard() {
           style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
           <div className="flex items-center justify-between px-4 pt-4 pb-3 flex-none">
             <span className="panel-label">Live Incident Feed</span>
-            <AnimatePresence mode="wait">
-              <motion.span key={activeIncidents}
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
+            <span
                 className="text-xs font-bold px-2 py-0.5 rounded-full"
                 style={{ background: activeIncidents > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.1)', color: activeIncidents > 0 ? '#f87171' : '#34d399', border: `1px solid ${activeIncidents > 0 ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.2)'}` }}>
                 {activeIncidents} active
-              </motion.span>
-            </AnimatePresence>
+              </span>
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
-            <AnimatePresence>
+            
               {obs.emergencies.length === 0 ? (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                  className="flex flex-col items-center justify-center py-16 gap-3">
+                <div className="flex flex-col items-center justify-center py-16 gap-3">
                   <div className="text-4xl opacity-20">📡</div>
                   <span className="panel-label text-center">Scanning frequencies...<br />No active incidents</span>
-                </motion.div>
-              ) : obs.emergencies.map((e, i) => {
+                </div>
+              ) : obs.emergencies.map((e) => {
                 const sevConfig = {
                   CRITICAL: { color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.25)', glow: 'rgba(239,68,68,0.15)' },
                   HIGH:     { color: '#f97316', bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.25)', glow: 'rgba(249,115,22,0.1)' },
@@ -281,11 +276,7 @@ export default function Dashboard() {
                 const urgent = e.time_remaining != null && e.time_remaining < 15
 
                 return (
-                  <motion.div key={e.id}
-                    initial={{ x: 30, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    exit={{ x: -30, opacity: 0 }}
-                    transition={{ delay: i * 0.04 }}
+                  <div key={e.id}
                     className="rounded-xl p-3 relative overflow-hidden"
                     style={{ background: sevConfig.bg, border: `1px solid ${sevConfig.border}`, boxShadow: `0 0 16px ${sevConfig.glow}` }}>
                     {/* Severity bar */}
@@ -319,10 +310,9 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
-                  </motion.div>
+                  </div>
                 )
               })}
-            </AnimatePresence>
           </div>
         </aside>
       </div>

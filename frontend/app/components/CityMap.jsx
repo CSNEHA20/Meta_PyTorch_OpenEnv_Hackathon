@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 
 /* ── Deterministic city layout ── */
 function layoutNodes(n, W, H) {
@@ -161,12 +160,13 @@ export default function CityMap({ ambulances = [], emergencies = [], hospitals =
           const fill = pct >= 0.9 ? '#ef4444' : pct >= 0.7 ? '#f97316' : '#10b981'
           return (
             <g key={`h-${h.id}`} filter="url(#glow-soft)">
-              {/* Spinning ring */}
-              <motion.circle cx={pos.x} cy={pos.y} r={16} fill="none"
-                stroke={fill} strokeWidth={1.5} strokeDasharray="5 3" opacity={0.6}
-                animate={{ rotate: 360 }}
-                style={{ originX: pos.x, originY: pos.y }}
-                transition={{ duration: 12, repeat: Infinity, ease: 'linear' }} />
+              {/* Spinning ring — SVG-native animation (no JS thread) */}
+              <circle cx={pos.x} cy={pos.y} r={16} fill="none"
+                stroke={fill} strokeWidth={1.5} strokeDasharray="5 3" opacity={0.6}>
+                <animateTransform attributeName="transform" type="rotate"
+                  from={`0 ${pos.x} ${pos.y}`} to={`360 ${pos.x} ${pos.y}`}
+                  dur="12s" repeatCount="indefinite" />
+              </circle>
               {/* Body */}
               <rect x={pos.x - 9} y={pos.y - 9} width={18} height={18} rx={3}
                 fill="#0d1a2e" stroke={fill} strokeWidth={1.5} />
@@ -183,30 +183,26 @@ export default function CityMap({ ambulances = [], emergencies = [], hospitals =
         })}
 
         {/* ── Emergencies ── */}
-        <AnimatePresence>
           {emergencies?.map(e => {
             const pos = positions[e.node % n]
             if (!pos) return null
             const s = SEV[e.severity] || SEV.NORMAL
+            const dur = e.severity === 'CRITICAL' ? '0.8s' : '1.5s'
             return (
-              <motion.g key={`e-${e.id}`}
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 2, opacity: 0 }}>
-                {/* Outer pulse ring */}
-                <motion.circle cx={pos.x} cy={pos.y} r={s.r + 6}
-                  fill={s.pulse}
-                  animate={{ r: [s.r + 4, s.r + 14], opacity: [0.6, 0] }}
-                  transition={{ duration: e.severity === 'CRITICAL' ? 0.8 : 1.5, repeat: Infinity }} />
+              <g key={`e-${e.id}`}>
+                {/* Outer pulse ring — SVG-native animation (no JS thread) */}
+                <circle cx={pos.x} cy={pos.y} fill={s.pulse}>
+                  <animate attributeName="r" values={`${s.r + 4};${s.r + 14}`} dur={dur} repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.6;0" dur={dur} repeatCount="indefinite" />
+                </circle>
                 {/* Core */}
                 <circle cx={pos.x} cy={pos.y} r={s.r}
                   fill={`${s.color}33`} stroke={s.color} strokeWidth={2} filter="url(#glow-soft)" />
                 {/* Center dot */}
                 <circle cx={pos.x} cy={pos.y} r={3} fill={s.color} />
-              </motion.g>
+              </g>
             )
           })}
-        </AnimatePresence>
 
         {/* ── Ambulances ── */}
         {ambulances?.map(a => {
@@ -215,16 +211,15 @@ export default function CityMap({ ambulances = [], emergencies = [], hospitals =
           const color = STATE_COLORS[a.state] || '#94a3b8'
           const isActive = a.state !== 'idle'
           return (
-            <motion.g key={`a-${a.id}`}
-              layoutId={`amb-${a.id}`}
-              animate={{ x: pos.x, y: pos.y }}
-              transition={{ type: 'spring', stiffness: 120, damping: 18 }}
+            <g key={`a-${a.id}`}
+              transform={`translate(${pos.x}, ${pos.y})`}
               filter="url(#glow-blue)">
-              {/* Wake trail for active units */}
+              {/* Wake trail — SVG-native animation (no JS thread) */}
               {isActive && (
-                <motion.circle r={14} fill={color} opacity={0.12}
-                  animate={{ r: [10, 20], opacity: [0.18, 0] }}
-                  transition={{ repeat: Infinity, duration: 1 }} />
+                <circle fill={color}>
+                  <animate attributeName="r" values="10;20" dur="1s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.18;0" dur="1s" repeatCount="indefinite" />
+                </circle>
               )}
               {/* Body */}
               <rect x={-7} y={-4} width={14} height={8} rx={2}
@@ -237,7 +232,7 @@ export default function CityMap({ ambulances = [], emergencies = [], hospitals =
                 fontFamily="monospace" fontWeight="700">
                 A{a.id}
               </text>
-            </motion.g>
+            </g>
           )
         })}
       </svg>

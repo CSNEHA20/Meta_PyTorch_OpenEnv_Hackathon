@@ -19,7 +19,7 @@ from typing import Optional, Any
 from openenv.core.env_server import Environment
 from openenv.core.env_server.types import EnvironmentMetadata
 
-from env.environment import AmbulanceEnv
+from env.environment import AmbulanceEnvironment as AmbulanceEnv
 from env.models import ObservationModel, ActionModel, AmbulanceEnvState
 from rl.rubric import make_ambulance_rubric
 

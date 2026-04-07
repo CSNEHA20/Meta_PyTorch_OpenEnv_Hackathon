@@ -44,7 +44,7 @@ class AmbulanceEnvironment:
         self.city_graph = CityGraph(n=self.graph_size)
         self.nodes = list(self.city_graph.graph.nodes())
         self.fleet = AmbulanceFleet(n=self.n_ambulances, nodes=self.nodes)
-        self.generator = EmergencyGenerator(nodes=self.nodes)
+        self.generator = EmergencyGenerator(nodes=self.nodes, lambda_param=self.config.get("lambda_param", 0.15))
         self.traffic = TrafficEngine()
         
         # Specialties for Rule #8
