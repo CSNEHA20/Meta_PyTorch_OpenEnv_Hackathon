@@ -13,15 +13,21 @@ Environment variables:
 
 import os
 from pathlib import Path
+from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Body, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from openenv.core.env_server import create_app
 
 from env.models import ActionModel, ObservationModel
+from env.environment import AmbulanceEnvironment as _RawEnv
 from server.ambulance_environment import AmbulanceEnvironment
+from agents.greedy_agent import GreedyAgent
+from tasks.easy import EasyConfig
+from tasks.medium import MediumConfig
+from tasks.hard import HardConfig
 
 # ---------------------------------------------------------------------------
 # Core OpenEnv application
@@ -102,7 +108,9 @@ async def mcp_server_info():
 
 # ---------------------------------------------------------------------------
 # Episode Replay & Trajectory Storage (Feature 12)
+# Capped at 50 episodes to prevent unbounded memory growth.
 # ---------------------------------------------------------------------------
+_MAX_TRAJECTORIES = 50
 trajectories = {}
 
 @app.get("/episodes", tags=["Replay"])
@@ -116,3 +124,58 @@ async def get_episode(episode_id: str):
 @app.get("/health", tags=["Health"])
 async def health() -> dict:
     return {"status": "ok", "environment": "ambulance-dispatch", "version": "1.0.0"}
+
+
+# ---------------------------------------------------------------------------
+# Dashboard: Stateful /env/* endpoints
+# The frontend calls /env/reset and /env/step (proxied here by Next.js).
+# These maintain a single persistent environment + greedy agent so the
+# dashboard shows live dispatching behaviour across steps.
+# ---------------------------------------------------------------------------
+
+_TASK_CONFIGS = {
+    "easy":   EasyConfig,
+    "medium": MediumConfig,
+    "hard":   HardConfig,
+}
+
+_dash_env: Optional[_RawEnv] = None
+_dash_agent = GreedyAgent()
+_dash_last_obs: Optional[ObservationModel] = None
+
+
+@app.post("/env/reset", tags=["Dashboard"])
+async def dashboard_reset(body: dict = Body(default={})):
+    global _dash_env, _dash_last_obs
+    task_name = (body.get("task_name") or "easy").lower()
+    cfg = _TASK_CONFIGS.get(task_name, EasyConfig)().to_dict()
+    _dash_env = _RawEnv(cfg)
+    obs = _dash_env.reset()
+    _dash_last_obs = obs
+    return obs.model_dump()
+
+
+@app.post("/env/step", tags=["Dashboard"])
+async def dashboard_step(body: dict = Body(default={})):
+    global _dash_env, _dash_last_obs
+    if _dash_env is None:
+        raise HTTPException(status_code=400, detail="Call /env/reset first")
+    # Guard: do not advance a finished episode
+    if _dash_last_obs is not None and getattr(_dash_last_obs, 'done', False):
+        return (_dash_last_obs.model_dump()
+                if hasattr(_dash_last_obs, 'model_dump')
+                else _dash_last_obs)
+    # Use the greedy agent to pick a smart dispatch action each step
+    action = _dash_agent.act(_dash_last_obs or _dash_env._get_observation())
+    obs = _dash_env.step(action)
+    _dash_last_obs = obs
+    return obs.model_dump()
+
+
+@app.get("/env/state", tags=["Dashboard"])
+async def dashboard_state():
+    global _dash_env
+    if _dash_env is None:
+        raise HTTPException(status_code=400, detail="Call /env/reset first")
+    return _dash_env.state.model_dump()
+

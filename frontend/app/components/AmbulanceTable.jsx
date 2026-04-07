@@ -1,5 +1,4 @@
 'use client';
-import { motion, AnimatePresence } from 'framer-motion'
 
 const STATE_CONFIG = {
   idle:          { color: '#475569', label: 'Idle',         dot: '#475569' },
@@ -23,15 +22,11 @@ export default function AmbulanceTable({ ambulances = [] }) {
 
   return (
     <div className="space-y-2">
-      <AnimatePresence>
-        {ambulances.map((a, i) => {
+        {ambulances.map((a) => {
           const cfg = STATE_CONFIG[a.state] || { color: '#94a3b8', label: a.state, dot: '#94a3b8' }
           const isActive = a.state !== 'idle'
           return (
-            <motion.div key={a.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05 }}
+            <div key={a.id}
               className="rounded-xl px-3 py-2.5 flex items-center justify-between"
               style={{
                 background: `${cfg.color}0d`,
@@ -65,10 +60,9 @@ export default function AmbulanceTable({ ambulances = [] }) {
                   <div className="panel-label" style={{ fontSize: 9 }}>—</div>
                 )}
               </div>
-            </motion.div>
+            </div>
           )
         })}
-      </AnimatePresence>
     </div>
   )
 }
