@@ -121,9 +121,14 @@ async def list_episodes():
 async def get_episode(episode_id: str):
     return trajectories.get(episode_id, [])
 
+@app.get("/", tags=["Health"])
+async def root() -> dict:
+    return {"status": "ok", "environment": "ambulance-dispatch", "version": "1.0.0"}
+
+
 @app.get("/health", tags=["Health"])
 async def health() -> dict:
-    return {"status": "ok", "environment": "ambulance-dispatch", "version": "1.0.0"}
+    return {"status": "healthy", "environment": "ambulance-dispatch", "version": "1.0.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -142,34 +147,71 @@ _TASK_CONFIGS = {
 _dash_env: Optional[_RawEnv] = None
 _dash_agent = GreedyAgent()
 _dash_last_obs: Optional[ObservationModel] = None
+_current_trajectory: list = []
+_current_episode_id: str = ""
 
 
 @app.post("/env/reset", tags=["Dashboard"])
 async def dashboard_reset(body: dict = Body(default={})):
-    global _dash_env, _dash_last_obs
+    global _dash_env, _dash_last_obs, _current_trajectory, _current_episode_id
     task_name = (body.get("task_name") or "easy").lower()
     cfg = _TASK_CONFIGS.get(task_name, EasyConfig)().to_dict()
     _dash_env = _RawEnv(cfg)
     obs = _dash_env.reset()
     _dash_last_obs = obs
+    _current_episode_id = _dash_env.episode_id
+    _current_trajectory = []
     return obs.model_dump()
 
 
 @app.post("/env/step", tags=["Dashboard"])
 async def dashboard_step(body: dict = Body(default={})):
-    global _dash_env, _dash_last_obs
+    global _dash_env, _dash_last_obs, _current_trajectory
     if _dash_env is None:
         raise HTTPException(status_code=400, detail="Call /env/reset first")
     # Guard: do not advance a finished episode
     if _dash_last_obs is not None and getattr(_dash_last_obs, 'done', False):
-        return (_dash_last_obs.model_dump()
-                if hasattr(_dash_last_obs, 'model_dump')
-                else _dash_last_obs)
-    # Use the greedy agent to pick a smart dispatch action each step
-    action = _dash_agent.act(_dash_last_obs or _dash_env._get_observation())
+        return _dash_last_obs.model_dump() if hasattr(_dash_last_obs, 'model_dump') else _dash_last_obs
+
+    # Use request body action if provided, otherwise use greedy agent
+    action_body = body.get("action") if body else None
+    if action_body and isinstance(action_body, dict) and not action_body.get("is_noop", True):
+        try:
+            action = ActionModel(**action_body)
+        except Exception:
+            action = _dash_agent.act(_dash_last_obs or _dash_env._get_observation())
+    else:
+        action = _dash_agent.act(_dash_last_obs or _dash_env._get_observation())
+
     obs = _dash_env.step(action)
     _dash_last_obs = obs
+
+    # Store step in trajectory
+    _current_trajectory.append({
+        "step": _dash_env.step_count,
+        "action": action.model_dump(),
+        "obs": obs.model_dump(),
+        "reward": obs.reward,
+        "done": obs.done,
+    })
+
+    # On episode end, persist trajectory (cap at _MAX_TRAJECTORIES)
+    if obs.done and _current_episode_id:
+        if len(trajectories) >= _MAX_TRAJECTORIES:
+            oldest = next(iter(trajectories))
+            del trajectories[oldest]
+        trajectories[_current_episode_id] = list(_current_trajectory)
+
     return obs.model_dump()
+
+
+@app.get("/env/metrics", tags=["Dashboard"])
+async def dashboard_metrics():
+    """Return current episode metrics for richer dashboard KPIs."""
+    global _dash_env
+    if _dash_env is None:
+        return {"metrics": {}, "episode_id": None}
+    return {"metrics": _dash_env.metrics, "episode_id": _dash_env.episode_id}
 
 
 @app.get("/env/state", tags=["Dashboard"])
@@ -178,4 +220,23 @@ async def dashboard_state():
     if _dash_env is None:
         raise HTTPException(status_code=400, detail="Call /env/reset first")
     return _dash_env.state.model_dump()
+
+
+# ---------------------------------------------------------------------------
+# Entry point — required by openenv validate & [project.scripts]
+# ---------------------------------------------------------------------------
+
+def main():
+    """Start the uvicorn server — used by `ambulance-server` console script."""
+    import uvicorn
+    uvicorn.run(
+        "server.app:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "7860")),
+        workers=int(os.getenv("WORKERS", "4")),
+    )
+
+
+if __name__ == "__main__":
+    main()
 

@@ -13,4 +13,52 @@ frontend/node_modules/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+
+# Trained model weights (large binary files)
+*.pth
+*.pt
+*.ckpt
+
+# macOS
+.DS_Store
+
+# Frontend build output
+frontend/dist/
+frontend/.next/
+frontend/out/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Test / coverage artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Type-checking / linting caches
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Next.js build outputs
+frontend/.next/
+frontend/out/
+
+# Logs
+*.log
+logs/
 

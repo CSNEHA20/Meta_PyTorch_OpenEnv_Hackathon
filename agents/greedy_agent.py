@@ -15,9 +15,13 @@ class GreedyAgent:
         # 3. Choose first idle ambulance
         selected_amb = idle_ambs[0]
 
-        # 4. Choose nearest emergency to that ambulance
+        # 4. Choose nearest UNASSIGNED emergency to that ambulance
+        unassigned = [e for e in observation.emergencies if not e.assigned]
+        if not unassigned:
+            return ActionModel(ambulance_id=None, emergency_id="", hospital_id=None)
+
         selected_emg = min(
-            observation.emergencies,
+            unassigned,
             key=lambda e: abs(e.node - selected_amb.node)
         )
 

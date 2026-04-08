@@ -51,6 +51,7 @@ class EmergencyInfo(BaseModel):
     node: int
     severity: Severity
     time_remaining: int
+    max_time_remaining: int = 90  # set at spawn time for frontend progress bars
     assigned: bool
     spawn_time: int = 0
 
@@ -74,6 +75,7 @@ class ObservationModel(Observation):
     traffic: Dict[str, float] = Field(default_factory=dict)
     step: int = 0
     reward: float = 0.0
+    reward_model: Optional["RewardModel"] = None  # typed reward — populated each step()
     done: bool = False
     rubric: Optional[Rubric] = None
 
@@ -106,7 +108,17 @@ class AmbulanceEnvState(State):
 
 
 class RewardModel(BaseModel):
+    """Typed reward returned per step — exposes scalar value and all named components."""
     value: float
     components: Dict[str, float]
     emergencies_served: int
     emergencies_missed: int
+
+    @classmethod
+    def from_rubric(cls, rubric: "Rubric", served: int, missed: int) -> "RewardModel":
+        return cls(
+            value=rubric.total(),
+            components=rubric.model_dump(),
+            emergencies_served=served,
+            emergencies_missed=missed,
+        )

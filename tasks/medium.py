@@ -4,10 +4,10 @@ from typing import Dict, Any
 
 @dataclass
 class MediumConfig:
-    n_ambulances: int = 3
-    n_hospitals: int = 2
+    n_ambulances: int = 4
+    n_hospitals: int = 3
     max_steps: int = 60
-    lambda_param: float = 0.1
+    lambda_param: float = 0.4
     traffic_range: tuple = (1.0, 1.3)
     seed: int = 42
 
