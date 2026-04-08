@@ -35,23 +35,50 @@ class CityGraph:
         return max(1, int(np.ceil(base_length * traffic_multiplier)))
 
 class TrafficEngine:
-    """Simulates dynamic traffic with rush hours and incidents (Feature 5)."""
+    """Simulates dynamic traffic with rush hours and deterministic incidents."""
+
+    def __init__(self, rng: np.random.Generator = None):
+        self._rng = rng if rng is not None else np.random.default_rng(42)
+        # Incident events: edge -> steps_remaining_blocked
+        self._incidents: Dict[tuple, int] = {}
+        self._incident_prob = 0.02  # 2% chance per step of a new incident
+
+    def set_incident_prob(self, prob: float):
+        self._incident_prob = prob
+
+    def maybe_spawn_incident(self, graph_edges: list, step: int):
+        """Randomly block an edge for 5 steps (Hard task dynamic incidents)."""
+        if self._rng.random() < self._incident_prob and graph_edges:
+            edge = graph_edges[int(self._rng.integers(0, len(graph_edges)))]
+            self._incidents[edge] = 5  # block for 5 steps
+
+    def tick_incidents(self):
+        """Decrement incident timers; remove expired ones."""
+        expired = [k for k, v in self._incidents.items() if v <= 1]
+        for k in expired:
+            del self._incidents[k]
+        for k in self._incidents:
+            self._incidents[k] -= 1
+
     def get_multiplier(self, step: int) -> float:
         hour = (step % 1440) // 60
-        # Rush hours: 7-9, 17-20
         if (7 <= hour < 9) or (17 <= hour < 20):
-            # Normal(1.5, 0.1) clamped to [1.2, 2.5]
-            return float(np.clip(np.random.normal(1.6, 0.2), 1.2, 2.5))
-        # Off-peak: Normal(1.0, 0.05) clamped to [0.9, 1.2]
-        return float(np.clip(np.random.normal(1.0, 0.05), 0.9, 1.2))
+            base = float(np.clip(self._rng.normal(1.6, 0.2), 1.2, 2.5))
+        else:
+            base = float(np.clip(self._rng.normal(1.0, 0.05), 0.9, 1.2))
+        # Incidents raise multiplier to 10.0 on blocked edges (averaged globally as +0.5)
+        if self._incidents:
+            base += 0.5 * min(len(self._incidents), 2)
+        return float(np.clip(base, 0.9, 10.0))
 
 class Ambulance:
     """Ambulance unit with transition logic (Feature 6)."""
-    def __init__(self, amb_id: int, start_node: int):
+    def __init__(self, amb_id: int, start_node: int, rng: np.random.Generator = None):
         self.id = amb_id
         self.node = start_node
         self.state = AmbulanceState.IDLE
         self.eta = 0
+        self._rng = rng if rng is not None else np.random.default_rng(amb_id)
         self.target_emg_id: Optional[str] = None
         self.target_emg_node: Optional[int] = None
         self.target_hosp_id: Optional[int] = None
@@ -66,30 +93,27 @@ class Ambulance:
             self.state = AmbulanceState.EN_ROUTE
             if self.target_emg_node is not None:
                 self.eta = city.shortest_path_time(self.node, self.target_emg_node, tm)
-        
+
         elif self.state == AmbulanceState.EN_ROUTE:
-            # Arrival at scene
             self.state = AmbulanceState.AT_SCENE
             self.node = self.target_emg_node if self.target_emg_node is not None else self.node
-            self.eta = int(np.random.randint(2, 5)) # Load time
-        
+            self.eta = int(self._rng.integers(2, 5))  # Load time 2-4 steps
+
         elif self.state == AmbulanceState.AT_SCENE:
-            # Move to hospital
             self.state = AmbulanceState.TRANSPORTING
             if self.target_hosp_node is not None:
                 self.eta = city.shortest_path_time(self.node, self.target_hosp_node, tm)
-        
+
         elif self.state == AmbulanceState.TRANSPORTING:
-            # Delivery and handover
             self.state = AmbulanceState.RETURNING
             self.node = self.target_hosp_node if self.target_hosp_node is not None else self.node
             self.target_emg_id = None
             self.target_emg_node = None
-            self.eta = int(np.random.randint(2, 4)) # Handover delay
-        
+            self.eta = int(self._rng.integers(2, 4))  # Handover delay
+
         elif self.state == AmbulanceState.RETURNING:
             self.state = AmbulanceState.IDLE
-        
+
         elif self.state == AmbulanceState.REPOSITIONING:
             self.state = AmbulanceState.IDLE
             if self.target_emg_node is not None:
@@ -107,10 +131,10 @@ class Ambulance:
 
 class AmbulanceFleet:
     """Manages all ambulance units as a fleet."""
-    def __init__(self, n: int, nodes: List[int]):
-        # Safety check for empty node list
+    def __init__(self, n: int, nodes: List[int], rng: np.random.Generator = None):
+        self._rng = rng if rng is not None else np.random.default_rng(42)
         self.ambulances = [
-            Ambulance(i, int(np.random.choice(nodes)) if nodes else 0) 
+            Ambulance(i, int(self._rng.choice(nodes)) if nodes else 0)
             for i in range(n)
         ]
 
@@ -142,9 +166,10 @@ import random
 
 class EmergencyGenerator:
     """Generates new emergencies following a Poisson process."""
-    def __init__(self, nodes: List[int], lambda_param: float = 0.05):
+    def __init__(self, nodes: List[int], lambda_param: float = 0.05, rng: np.random.Generator = None):
         self.nodes = nodes
         self.lambda_param = lambda_param
+        self._rng = rng if rng is not None else np.random.default_rng(42)
         self.config = {
             Severity.CRITICAL: {"prob": 0.25, "timeout": 20},
             Severity.HIGH: {"prob": 0.35, "timeout": 45},
@@ -154,21 +179,26 @@ class EmergencyGenerator:
     def generate(self, step: int) -> List[EmergencyInfo]:
         if not self.nodes:
             return []
-            
-        num_new = np.random.poisson(self.lambda_param)
+        num_new = int(self._rng.poisson(self.lambda_param))
         new_emergencies = []
-        
-        # Extract keys and probabilities for random.choices
         severities = list(self.config.keys())
         probs = [self.config[s]["prob"] for s in severities]
-        
         for _ in range(num_new):
-            sev = random.choices(severities, weights=probs, k=1)[0]
+            r = self._rng.random()
+            cumulative = 0.0
+            sev = severities[-1]
+            for sv, p in zip(severities, probs):
+                cumulative += p
+                if r <= cumulative:
+                    sev = sv
+                    break
+            timeout = self.config[sev]["timeout"]
             new_emergencies.append(EmergencyInfo(
                 id=str(uuid.uuid4())[:8],
-                node=int(np.random.choice(self.nodes)),
+                node=int(self._rng.choice(self.nodes)),
                 severity=sev,
-                time_remaining=self.config[sev]["timeout"],
+                time_remaining=timeout,
+                max_time_remaining=timeout,
                 assigned=False
             ))
         return new_emergencies

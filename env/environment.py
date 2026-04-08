@@ -43,9 +43,13 @@ class AmbulanceEnvironment:
         self.episode_id = str(uuid.uuid4())
         self.city_graph = CityGraph(n=self.graph_size)
         self.nodes = list(self.city_graph.graph.nodes())
-        self.fleet = AmbulanceFleet(n=self.n_ambulances, nodes=self.nodes)
-        self.generator = EmergencyGenerator(nodes=self.nodes, lambda_param=self.config.get("lambda_param", 0.15))
-        self.traffic = TrafficEngine()
+        self.fleet = AmbulanceFleet(n=self.n_ambulances, nodes=self.nodes, rng=self.rng)
+        self.generator = EmergencyGenerator(
+            nodes=self.nodes,
+            lambda_param=self.config.get("lambda_param", 0.15),
+            rng=self.rng
+        )
+        self.traffic = TrafficEngine(rng=self.rng)
         
         # Specialties for Rule #8
         specs = ["Trauma", "Cardiac", "General", "Paediatric"]
@@ -59,14 +63,29 @@ class AmbulanceEnvironment:
         self.step_count = 0
         self.active_emergencies: List[EmergencyInfo] = []
         self.last_rubric = Rubric()
+        self._noop_streak = 0  # escalating no-op penalty counter
+
+        # Zone bounds split node space into 4 equal quartiles
+        q = self.graph_size // 4
+        self._zone_bounds = [(0, q), (q, 2 * q), (2 * q, 3 * q), (3 * q, self.graph_size)]
 
         self.metrics = {
             "served": 0, "missed": 0, "total_emergencies": 0,
-            "critical_served": 0, "high_served": 0, "normal_served": 0,
-            "avg_response_time": 0.0, "hospital_overflow": 0
+            "critical_served": 0, "critical_total": 0,
+            "high_served": 0, "normal_served": 0,
+            "avg_response_time": 0.0, "hospital_overflow": 0,
+            "capacity_violations": 0,
+            "idle_fraction": 0.0, "idle_steps": 0, "total_steps": 0,
+            "priority_correct": 0, "priority_total": 0,
+            "response_times": [], "optimal_times": [],
+            "zone_served": {0: 0, 1: 0, 2: 0, 3: 0},
+            "zone_total":  {0: 0, 1: 0, 2: 0, 3: 0},
         }
-        self._dispatch_times = {}
-        self._response_times = []
+        self._dispatch_times: Dict[str, int] = {}
+        self._dispatch_nodes: Dict[str, int] = {}  # emg_id -> ambulance node at dispatch
+        self._response_times: List[float] = []
+        self._optimal_times: List[float] = []
+        self._idle_steps = 0
 
         return self._get_observation()
 
@@ -103,29 +122,61 @@ class AmbulanceEnvironment:
 
             if amb and emg and hosp and amb.state == AmbulanceState.IDLE:
                 if hosp.is_available():
+                    # Specialty mismatch penalty (Hard task feature)
+                    specialty_map = {
+                        "CRITICAL": ["Trauma", "Cardiac"],
+                        "HIGH": ["Trauma", "General"],
+                        "NORMAL": ["General", "Paediatric"],
+                    }
+                    preferred = specialty_map.get(emg.severity.value, [])
+                    if preferred and hosp.specialty not in preferred:
+                        rubric.capacity_violation -= 1.0  # specialty mismatch penalty
+
                     self.fleet.dispatch(amb.id, emg.id, emg.node, hosp.id, hosp.node)
                     emg.assigned = True
                     self._dispatch_times[emg.id] = self.step_count
-                    
+                    self._dispatch_nodes[emg.id] = amb.node  # for optimal time computation
+
                     # RFC Feature: Dispatch Speed Rubric
                     wait_time = self.step_count - emg.spawn_time
                     rubric.dispatch_speed = max(0, 10.0 - wait_time * 0.5)
+                    self._noop_streak = 0
                 else:
                     rubric.capacity_violation -= 5.0
                     self.metrics["hospital_overflow"] += 1
+                    self.metrics["capacity_violations"] = self.metrics.get("capacity_violations", 0) + 1
+                    self._noop_streak += 1
             else:
-                rubric.idle_penalty -= 2.0
+                # Invalid action / dispatching non-idle ambulance
+                self._noop_streak += 1
+                rubric.idle_penalty -= 2.0 + self._noop_streak * 0.5  # escalating
+        else:
+            # No-op: escalating penalty when emergencies are active
+            if self.active_emergencies:
+                self._noop_streak += 1
+                rubric.idle_penalty -= 0.5 * self._noop_streak
+            else:
+                self._noop_streak = 0
 
-        # 2. Simulation Physics
+        # 2. Simulation Physics (with deterministic incident events for Hard task)
         pre_states = {a.id: a.state for a in self.fleet.ambulances}
+        graph_edges = list(self.city_graph.graph.edges())
+        self.traffic.maybe_spawn_incident(graph_edges, self.step_count)
+        self.traffic.tick_incidents()
         self.fleet.step_update(self.city_graph, tm)
         post_states = {a.id: a.state for a in self.fleet.ambulances}
 
         # 3. Emergency Dynamics
         new_emgs = self.generator.generate(self.step_count)
-        # Convert internal emgs to EmergencyInfo
         for ne in new_emgs:
-            ne.spawn_time = self.step_count
+            ne.spawn_time = self.step_count            # Track critical_total for grader_hard
+            if ne.severity == Severity.CRITICAL:
+                self.metrics["critical_total"] = self.metrics.get("critical_total", 0) + 1            # Assign zone for fairness tracking
+            ne_zone = next(
+                (z for z, (lo, hi) in enumerate(self._zone_bounds) if lo <= ne.node < hi),
+                0
+            )
+            self.metrics["zone_total"][ne_zone] = self.metrics["zone_total"].get(ne_zone, 0) + 1
         self.active_emergencies.extend(new_emgs)
         self.metrics["total_emergencies"] += len(new_emgs)
 
@@ -147,28 +198,65 @@ class AmbulanceEnvironment:
             if pre_states[amb.id] == AmbulanceState.EN_ROUTE and post_states[amb.id] == AmbulanceState.AT_SCENE:
                 rubric.emergency_served += 20.0
                 self.metrics["served"] += 1
-                
+
                 emg = next((e for e in self.active_emergencies if e.id == amb.target_emg_id), None)
                 if emg:
                     if emg.severity == Severity.CRITICAL:
                         rubric.severity_bonus += 30.0
                         self.metrics["critical_served"] += 1
+                        self.metrics["priority_correct"] = self.metrics.get("priority_correct", 0) + 1
                     elif emg.severity == Severity.HIGH:
                         rubric.severity_bonus += 10.0
                         self.metrics["high_served"] += 1
+                        self.metrics["priority_correct"] = self.metrics.get("priority_correct", 0) + 1
                     else:
                         self.metrics["normal_served"] += 1
+                    self.metrics["priority_total"] = self.metrics.get("priority_total", 0) + 1
+                    # Zone tracking for fairness metric
+                    emg_zone = next(
+                        (z for z, (lo, hi) in enumerate(self._zone_bounds) if lo <= emg.node < hi),
+                        0
+                    )
+                    self.metrics["zone_served"][emg_zone] = self.metrics["zone_served"].get(emg_zone, 0) + 1
                     self.active_emergencies = [e for e in self.active_emergencies if e.id != amb.target_emg_id]
+
+                # Record response time and optimal time for graders
+                dispatch_t = self._dispatch_times.get(amb.target_emg_id or "")
+                if dispatch_t is not None:
+                    response_t = float(self.step_count - dispatch_t)
+                    self._response_times.append(response_t)
+                    self.metrics["response_times"] = self._response_times
+                    self.metrics["avg_response_time"] = float(
+                        sum(self._response_times) / len(self._response_times)
+                    )
+                    # Compute optimal (no-traffic) time for grade_easy
+                    src_node = self._dispatch_nodes.get(amb.target_emg_id or "")
+                    if src_node is not None and emg is not None:
+                        try:
+                            opt_t = float(self.city_graph.shortest_path_time(src_node, emg.node, 1.0))
+                        except Exception:
+                            opt_t = response_t
+                        self._optimal_times.append(max(1.0, opt_t))
+                        self.metrics["optimal_times"] = self._optimal_times
 
             if pre_states[amb.id] == AmbulanceState.TRANSPORTING and post_states[amb.id] == AmbulanceState.RETURNING:
                 rubric.hospital_delivery += 10.0
                 hosp = self.hospitals.get(amb.target_hosp_id)
                 if hosp: hosp.admit()
 
-        # 5. Penalties & Discharge
+        # 5. Idle penalty and idle_fraction tracking
         idle_count = len([a for a in self.fleet.ambulances if a.state == AmbulanceState.IDLE])
         if self.active_emergencies and idle_count > 0:
             rubric.idle_penalty -= idle_count * 1.0
+            self._idle_steps += idle_count
+
+        # Update idle_fraction and idle_steps metrics
+        self.metrics["total_steps"] = self.step_count
+        self.metrics["idle_steps"] = self._idle_steps
+        total_ambulance_steps = self.n_ambulances * self.step_count
+        self.metrics["idle_fraction"] = (
+            self._idle_steps / total_ambulance_steps if total_ambulance_steps > 0 else 0.0
+        )
 
         if self.step_count % 10 == 0:
             for h in self.hospitals.values(): h.release()
@@ -179,6 +267,12 @@ class AmbulanceEnvironment:
         obs.reward = rubric.total()
         obs.done = done
         obs.rubric = rubric
+        # Populate typed RewardModel so it is actively used (not just defined)
+        obs.reward_model = RewardModel.from_rubric(
+            rubric,
+            served=self.metrics["served"],
+            missed=self.metrics["missed"],
+        )
         return obs
 
     def _get_observation(self, tm: Optional[float] = None) -> ObservationModel:

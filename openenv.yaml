@@ -5,8 +5,13 @@ description: |
   dispatch optimisation. Agents manage a fleet of ambulances across a
   Barabasi-Albert road network, routing to emergencies of three severity tiers
   (CRITICAL, HIGH, NORMAL) while respecting hospital capacity limits and
-  dynamic rush-hour traffic multipliers. Reward is computed via an RFC 004
-  Rubric with nine named components for per-component training introspection.
+  dynamic rush-hour traffic multipliers.
+
+  Ambulance dispatch is a real-world professional task performed by trained
+  operators in every country. The environment models the 108/112 emergency
+  dispatch network with life-or-death stakes and measurable impact on
+  emergency response times. Reward is computed via an RFC 004 Rubric with
+  nine named components for per-component training introspection.
 author: Ambulance-OpenENV Team
 documentation_url: https://github.com/your-org/ambulance-openenv
 
@@ -15,13 +20,13 @@ action_space:
   properties:
     ambulance_id:
       type: integer
-      description: ID of the idle ambulance to dispatch
+      description: ID of the idle ambulance to dispatch (0-indexed)
     emergency_id:
       type: string
       description: UUID of the target unassigned emergency
     hospital_id:
       type: integer
-      description: ID of the destination hospital
+      description: ID of the destination hospital (0-indexed)
     reposition_node:
       type: integer
       description: Graph node to reposition an idle ambulance to (optional)
@@ -40,7 +45,7 @@ observation_space:
       description: Active unassigned emergencies (node, severity, time remaining)
     hospitals:
       type: array
-      description: Hospital status (node, capacity, current occupancy)
+      description: Hospital status (node, capacity, current occupancy, specialty)
     traffic:
       type: object
       description: Traffic multipliers keyed by edge or "global"
@@ -57,39 +62,42 @@ observation_space:
 tasks:
   - id: easy
     description: >
-      Single ambulance, 1 hospital, no traffic variation.
-      Emergencies appear one at a time. Tests basic dispatch correctness.
+      Two ambulances, 2 hospitals, no traffic variation.
+      Emergencies appear via Poisson (lambda=0.3). Tests basic dispatch correctness.
     difficulty: easy
     max_steps: 30
     config:
-      n_ambulances: 1
-      n_hospitals: 1
-      lambda_param: 1.0
+      n_ambulances: 2
+      n_hospitals: 2
+      max_steps: 30
+      lambda_param: 0.3
       seed: 42
   - id: medium
     description: >
-      Three ambulances, 2 hospitals, mild traffic (1.0–1.3x), concurrent
-      Poisson emergencies (lambda=0.1). Tests fleet coordination and
+      Four ambulances, 3 hospitals, mild traffic (1.0–1.3x), concurrent
+      Poisson emergencies (lambda=0.4). Tests fleet coordination and
       hospital routing under partial congestion.
     difficulty: medium
     max_steps: 60
     config:
-      n_ambulances: 3
-      n_hospitals: 2
-      lambda_param: 0.1
+      n_ambulances: 4
+      n_hospitals: 3
+      max_steps: 60
+      lambda_param: 0.4
       seed: 42
   - id: hard
     description: >
-      Five ambulances, 3 hospitals, dynamic rush-hour traffic (1.0–2.5x),
-      Poisson emergencies (lambda=0.2), strict hospital capacity constraints,
-      full severity triage. Tests optimal resource allocation under adversarial
-      conditions.
+      Six ambulances, 4 hospitals with specialties, dynamic rush-hour traffic
+      (1.0–2.5x), Poisson emergencies (lambda=0.6), strict hospital capacity
+      constraints, full severity triage, incident events, fairness zones.
+      Tests optimal resource allocation under adversarial conditions.
     difficulty: hard
     max_steps: 100
     config:
-      n_ambulances: 5
-      n_hospitals: 3
-      lambda_param: 0.2
+      n_ambulances: 6
+      n_hospitals: 4
+      max_steps: 100
+      lambda_param: 0.6
       seed: 42
 
 inference_script: inference.py

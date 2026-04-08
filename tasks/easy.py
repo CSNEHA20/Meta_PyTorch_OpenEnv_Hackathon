@@ -4,10 +4,10 @@ from typing import Dict, Any
 
 @dataclass
 class EasyConfig:
-    n_ambulances: int = 1
-    n_hospitals: int = 1
+    n_ambulances: int = 2
+    n_hospitals: int = 2
     max_steps: int = 30
-    lambda_param: float = 1.0
+    lambda_param: float = 0.3
     seed: int = 42
 
     def to_dict(self) -> Dict[str, Any]:

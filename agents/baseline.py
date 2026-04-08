@@ -1,6 +1,6 @@
 from env.models import ObservationModel, ActionModel, AmbulanceState, Severity
 
-class SmartDispatchAgent:
+class BaselineAgent:
     """Enhanced agent with multi-criteria dispatch prioritization."""
     
     def act(self, observation: ObservationModel) -> ActionModel:

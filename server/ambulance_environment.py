@@ -67,31 +67,36 @@ class AmbulanceEnvironment(Environment[ActionModel, ObservationModel, AmbulanceE
         timeout_s: Optional[float] = None,
         **kwargs: Any,
     ) -> ObservationModel:
-        # Translate openenv ActionModel to inner ActionModel (same class now)
-        obs_model, raw_reward, done, info = self._inner.step(action)
-        self._last_info = info
+        # _inner.step() returns a single ObservationModel (reward/done embedded)
+        obs_model = self._inner.step(action)
+        raw_reward = obs_model.reward
+        done = obs_model.done
 
         # Build rubric env_state for RFC 004 named reward introspection.
-        rubric_state = _extract_rubric_state(obs_model, info)
+        rubric_state = _extract_rubric_state(obs_model, self._inner.metrics)
         rubric_reward = self.rubric.score(rubric_state)  # type: ignore[union-attr]
-        self.rubric._last_total = rubric_reward          # type: ignore[union-attr]
+        self.rubric._last_total = rubric_reward           # type: ignore[union-attr]
 
         # Use rubric reward (richer signal) but fall back to raw if rubric is zero.
         reward = rubric_reward if rubric_reward != 0.0 else raw_reward
+        obs_model.reward = reward
 
+        self._last_info = {"metrics": self._inner.metrics}
         return self._wrap_obs(obs_model, reward=reward, done=done)
 
     @property
     def state(self) -> AmbulanceEnvState:
-        inner_state = self._inner.state()
+        # _inner.state is a @property — access it as a property, not as a method
+        inner = self._inner.state
         return AmbulanceEnvState(
             episode_id=self._episode_id,
             step_count=self._inner.step_count,
-            metrics=inner_state.get("metrics", {}),
-            ambulances=inner_state.get("ambulances", []),
-            hospitals=inner_state.get("hospitals", []),
-            emergencies=inner_state.get("emergencies", []),
-            traffic_multiplier=inner_state.get("traffic_multiplier", 1.0),
+            metrics=inner.metrics,
+            ambulances=inner.ambulances,
+            hospitals=inner.hospitals,
+            emergencies=inner.emergencies,
+            traffic_multiplier=inner.traffic_multiplier,
+            rubric=inner.rubric,
         )
 
     def get_metadata(self) -> EnvironmentMetadata:
@@ -139,22 +144,40 @@ class AmbulanceEnvironment(Environment[ActionModel, ObservationModel, AmbulanceE
 # Rubric state extractor
 # ---------------------------------------------------------------------------
 
-def _extract_rubric_state(obs: ObservationModel, info: dict) -> dict:
-    """Build the env_state dict consumed by each RubricComponent.compute()."""
-    metrics = info.get("metrics", {})
+def _extract_rubric_state(obs: ObservationModel, metrics: dict) -> dict:
+    """Build the env_state dict consumed by each RubricComponent.compute().
+
+    We extract per-step event signals directly from the observation's embedded
+    rubric (set by AmbulanceEnvironment.step), giving the RFC 004 rubric real
+    signal rather than all-zero placeholders.
+    """
+    rubric = obs.rubric
+    # Per-step events derived from the inline Pydantic rubric on the observation
+    served_this_step = 1 if (rubric and rubric.emergency_served > 0) else 0
+    severities: list = []
+    if rubric and rubric.severity_bonus >= 30:
+        severities = ["CRITICAL"]
+    elif rubric and rubric.severity_bonus >= 10:
+        severities = ["HIGH"]
+    elif rubric and rubric.emergency_served > 0:
+        severities = ["NORMAL"]
+
+    deliveries = 1 if (rubric and rubric.hospital_delivery > 0) else 0
+    overflow = 1 if (rubric and rubric.capacity_violation < -4) else 0
+    missed = 1 if (rubric and rubric.timeout_penalty < 0) else 0
+
     return {
-        # Per-step event counts (approximated from metrics delta — env tracks cumulative)
-        "served_this_step": 0,          # Components accumulate in AmbulanceEnv
-        "severities_served_this_step": [],
-        "response_times_this_step": [],
-        "deliveries_this_step": 0,
-        "overflow_this_step": 0,
-        "missed_this_step": 0,
+        "served_this_step": served_this_step,
+        "severities_served_this_step": severities,
+        "response_times_this_step": [metrics.get("avg_response_time", 10.0)] if served_this_step else [],
+        "deliveries_this_step": deliveries,
+        "overflow_this_step": overflow,
+        "missed_this_step": missed,
         # Instantaneous state
         "en_route_count": sum(1 for a in obs.ambulances if a.state == "en_route"),
         "idle_ambulances": sum(1 for a in obs.ambulances if a.state == "idle"),
         "pending_emergencies": len([e for e in obs.emergencies if not e.assigned]),
         "traffic_multiplier": obs.traffic.get("global", 1.0),
-        # Cumulative (for graders)
+        # Cumulative
         "metrics": metrics,
     }

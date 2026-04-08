@@ -28,7 +28,12 @@ export default function HospitalPanel({ hospitals = [] }) {
                   style={{ background: `${color}22` }}>
                   <span style={{ color, fontSize: 10, fontWeight: 900 }}>H</span>
                 </div>
-                <span className="text-xs font-bold" style={{ color: '#e2e8f0' }}>Hospital {h.id}</span>
+                <div>
+                  <span className="text-xs font-bold" style={{ color: '#e2e8f0' }}>Hospital {h.id}</span>
+                  {h.specialty && (
+                    <div className="panel-label leading-none mt-0.5">{h.specialty}</div>
+                  )}
+                </div>
               </div>
               <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
                 style={{ background: `${color}22`, color }}>{label}</span>

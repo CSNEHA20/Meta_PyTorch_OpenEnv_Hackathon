@@ -60,6 +60,7 @@ export default function Dashboard() {
   const [autoRun, setAutoRun] = useState(false)
   const [speed, setSpeed] = useState(300)
   const [status, setStatus] = useState('OFFLINE')
+  const [metrics, setMetrics] = useState({})
   const autoRef = useRef(false)
   const speedRef = useRef(300)
 
@@ -73,7 +74,7 @@ export default function Dashboard() {
   const resetEnv = useCallback(async () => {
     setStatus('INITIALIZING...')
     setAutoRun(false); autoRef.current = false
-    setRewardHistory([]); setEpisodeScore(0)
+    setRewardHistory([]); setEpisodeScore(0); setMetrics({})
     try {
       const resp = await axios.post(`/env/reset`, { task_name: task })
       const data = resp.data
@@ -95,6 +96,11 @@ export default function Dashboard() {
         setEpisodeScore(prev => prev + obsData.reward)
       }
       if (obsData.done) { setAutoRun(false); autoRef.current = false; setStatus('COMPLETE') }
+      // Refresh metrics from the dedicated endpoint
+      try {
+        const mResp = await axios.get('/env/metrics')
+        if (mResp.data?.metrics) setMetrics(mResp.data.metrics)
+      } catch { /* silent */ }
     } catch { /* silent */ }
     setRunning(false)
   }, [running])
@@ -228,6 +234,30 @@ export default function Dashboard() {
             </span>
           </div>
           <HospitalPanel hospitals={obs.hospitals} />
+
+          {/* Session Summary */}
+          {(metrics.served != null || metrics.missed != null) && (
+            <div className="pt-1">
+              <div className="flex items-center justify-between mb-2">
+                <span className="panel-label">Session Summary</span>
+              </div>
+              <div className="rounded-xl p-3 space-y-2"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                {[
+                  ['Served',    metrics.served  ?? 0, '#10b981'],
+                  ['Missed',    metrics.missed  ?? 0, '#ef4444'],
+                  ['Critical',  metrics.critical_served ?? 0, '#f97316'],
+                  ['Avg RT',    `${(metrics.avg_response_time ?? 0).toFixed(1)}s`, '#3b82f6'],
+                  ['Idle %',    `${((metrics.idle_fraction ?? 0) * 100).toFixed(0)}%`, '#8b5cf6'],
+                ].map(([label, value, color]) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <span className="panel-label">{label}</span>
+                    <span className="text-xs font-mono font-bold" style={{ color }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </aside>
 
         {/* ── CENTER ───────────────────────────────────────── */}
