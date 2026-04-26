@@ -1,6 +1,6 @@
 ---
 title: "How We Taught AI to Dispatch Ambulances: A Journey into Life-Saving Machine Learning"
-thumbnail: https://huggingface.co/spaces/vishallakshmikanthan/Ambulance-OpenENV/resolve/main/agent_comparison.png
+thumbnail: https://github.com/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon/raw/main/agent_comparison.png
 authors:
   - user: CSNEHA20
   - user: Vishallakshmikanthan
@@ -86,11 +86,11 @@ So, did it work? Let's look at the numbers.
 
 **Our GRPO-Trained Language Model**: Showed clear improvement over the baseline. The reward curves trend upward, and in head-to-head comparisons, it consistently beats the simple greedy approach.
 
-![Training Progress](https://huggingface.co/spaces/vishallakshmikanthan/Ambulance-OpenENV/resolve/main/reward_curve.png)
+![Training Progress](https://github.com/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon/raw/main/reward_curve.png)
 
 *Our DQN agent steadily improved over 500 training episodes, learning to make better dispatch decisions.*
 
-![GRPO Results](https://huggingface.co/spaces/vishallakshmikanthan/Ambulance-OpenENV/resolve/main/grpo_before_after.png)
+![GRPO Results](https://github.com/CSNEHA20/Meta_PyTorch_OpenEnv_Hackathon/raw/main/grpo_before_after.png)
 
 *The language model started with random behavior but progressively learned valid, effective dispatch strategies.*
 
