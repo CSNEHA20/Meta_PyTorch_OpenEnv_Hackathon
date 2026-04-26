@@ -62,3 +62,11 @@ frontend/out/
 *.log
 logs/
 
+# Generated plot images (keep repo small for HF Space)
+*.png
+*.jpg
+*.jpeg
+outputs/**/*.png
+outputs/**/*.jpg
+outputs/**/*.jpeg
+
