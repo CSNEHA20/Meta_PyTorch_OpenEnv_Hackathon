@@ -1,4 +1,4 @@
-from env.environment import AmbulanceEnv
+from env.environment import AmbulanceEnvironment as AmbulanceEnv
 from env.models import ActionModel, AmbulanceState
 
 def test_ambulance_env():
@@ -34,14 +34,14 @@ def test_ambulance_env():
             action.hospital_id = obs.hospitals[0].id
             print(f"[{step}] Step: Dispatching {action.ambulance_id} to {action.emergency_id}")
             
-        obs, reward, done, info = env.step(action)
-        total_reward += reward
+        obs = env.step(action)
+        total_reward += obs.reward
         
-        if done:
+        if obs.done:
             break
             
     print(f"\nFinal State Info:")
-    print(info)
+    print(env.metrics)
     print(f"Total Reward: {total_reward}")
     
     # 4. Determinism Check
