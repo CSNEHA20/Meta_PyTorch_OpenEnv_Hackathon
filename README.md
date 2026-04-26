@@ -15,7 +15,7 @@ tags:
   - pytorch
   - fastapi
 license: mit
-short_description: "Ambulance dispatch RL env with GRPO training, multi-agent support, 3 difficulty levels"
+short_description: "RL ambulance dispatch env with GRPO, multi-agent, 3 levels"
 ---
 
 <div align="center">
