@@ -71,18 +71,29 @@ export default function SelfImprovementView() {
   const [weaknesses, setWeaknesses] = useState(null);
   const [history, setHistory] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [trainStatus, setTrainStatus] = useState('idle');
+  const [launching, setLaunching] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const [wRes, hRes] = await Promise.all([
+      const [wRes, hRes, tRes] = await Promise.all([
         axios.get('/selfplay/weaknesses'),
         axios.get('/selfplay/iterations'),
+        axios.get('/selfplay/train/status'),
       ]);
       setWeaknesses(wRes.data);
       setHistory(hRes.data);
+      setTrainStatus(tRes.data?.status ?? 'idle');
     } catch { /* silent */ }
     setLoading(false);
   }, []);
+
+  const launchTraining = useCallback(async () => {
+    setLaunching(true);
+    try { await axios.post('/selfplay/train/start'); } catch { /* silent */ }
+    setLaunching(false);
+    refresh();
+  }, [refresh]);
 
   useEffect(() => {
     refresh();
@@ -109,11 +120,27 @@ export default function SelfImprovementView() {
 
   return (
     <div className="flex flex-col gap-6 p-6 overflow-y-auto h-full">
-      <div>
-        <h2 className="text-lg font-black text-white">Self-Improvement Loop</h2>
-        <p className="panel-label mt-0.5">
-          AdversarialScenarioGenerator · KMeans failure clustering · Expert imitation
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-black text-white">Self-Improvement Loop</h2>
+          <p className="panel-label mt-0.5">
+            AdversarialScenarioGenerator · KMeans failure clustering · Expert imitation
+          </p>
+        </div>
+        <button
+          onClick={launchTraining}
+          disabled={launching || trainStatus === 'running'}
+          className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-200"
+          style={{
+            background: trainStatus === 'running'
+              ? 'rgba(16,185,129,0.15)'
+              : launching ? 'rgba(168,85,247,0.2)' : 'rgba(168,85,247,0.8)',
+            color: trainStatus === 'running' ? '#10b981' : '#fff',
+            border: `1px solid ${trainStatus === 'running' ? 'rgba(16,185,129,0.4)' : 'rgba(168,85,247,0.5)'}`,
+            cursor: (launching || trainStatus === 'running') ? 'default' : 'pointer',
+          }}>
+          {trainStatus === 'running' ? '⬤ Training...' : launching ? 'Launching...' : '▶ Launch Training'}
+        </button>
       </div>
 
       {/* KPIs */}

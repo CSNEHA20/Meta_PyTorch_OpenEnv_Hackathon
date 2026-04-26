@@ -34,18 +34,29 @@ export default function MultiAgentView() {
   const [status, setStatus] = useState(null);
   const [conflicts, setConflicts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [trainStatus, setTrainStatus] = useState('idle'); // idle | running | stopped
+  const [launching, setLaunching] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const [sRes, cRes] = await Promise.all([
+      const [sRes, cRes, tRes] = await Promise.all([
         axios.get('/marl/status'),
         axios.get('/marl/conflicts?last_n=15'),
+        axios.get('/marl/train/status'),
       ]);
       setStatus(sRes.data);
       setConflicts(Array.isArray(cRes.data) ? cRes.data : []);
+      setTrainStatus(tRes.data?.status ?? 'idle');
     } catch { /* silent */ }
     setLoading(false);
   }, []);
+
+  const launchTraining = useCallback(async () => {
+    setLaunching(true);
+    try { await axios.post('/marl/train/start'); } catch { /* silent */ }
+    setLaunching(false);
+    refresh();
+  }, [refresh]);
 
   useEffect(() => {
     refresh();
@@ -66,10 +77,26 @@ export default function MultiAgentView() {
 
   return (
     <div className="flex flex-col gap-6 p-6 overflow-y-auto h-full">
-      {/* Title */}
-      <div>
-        <h2 className="text-lg font-black text-white">Multi-Agent Fleet Coordination</h2>
-        <p className="panel-label mt-0.5">Independent Q-Learning with OversightAgent conflict detection</p>
+      {/* Title + Launch */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-black text-white">Multi-Agent Fleet Coordination</h2>
+          <p className="panel-label mt-0.5">Independent Q-Learning with OversightAgent conflict detection</p>
+        </div>
+        <button
+          onClick={launchTraining}
+          disabled={launching || trainStatus === 'running'}
+          className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-200"
+          style={{
+            background: trainStatus === 'running'
+              ? 'rgba(16,185,129,0.15)'
+              : launching ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.8)',
+            color: trainStatus === 'running' ? '#10b981' : '#fff',
+            border: `1px solid ${trainStatus === 'running' ? 'rgba(16,185,129,0.4)' : 'rgba(99,102,241,0.5)'}`,
+            cursor: (launching || trainStatus === 'running') ? 'default' : 'pointer',
+          }}>
+          {trainStatus === 'running' ? '⬤ Training...' : launching ? 'Launching...' : '▶ Launch Training'}
+        </button>
       </div>
 
       {/* Summary KPIs */}
@@ -77,7 +104,7 @@ export default function MultiAgentView() {
         {[
           { label: 'Step', value: status?.step_count ?? 0, accent: '#3b82f6' },
           { label: 'Total Conflicts', value: status?.total_conflicts ?? 0, accent: '#ef4444' },
-          { label: 'Conflict Rate', value: `${((status?.conflict_rate ?? 0) * 100).toFixed(1)}%`, accent: '#f59e0b' },
+          { label: 'Avg Conflicts/Step', value: (status?.conflict_rate ?? 0).toFixed(2), accent: '#f59e0b' },
           { label: 'Active Agents', value: agentIds.length, accent: '#10b981' },
         ].map(({ label, value, accent }) => (
           <div key={label} className="rounded-2xl p-4"

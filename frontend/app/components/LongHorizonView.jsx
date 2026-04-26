@@ -57,14 +57,27 @@ function EpisodeTimeline({ stage }) {
 export default function LongHorizonView() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [trainStatus, setTrainStatus] = useState('idle');
+  const [launching, setLaunching] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const res = await axios.get('/curriculum/status');
-      setData(res.data);
+      const [dRes, tRes] = await Promise.all([
+        axios.get('/curriculum/status'),
+        axios.get('/curriculum/train/status'),
+      ]);
+      setData(dRes.data);
+      setTrainStatus(tRes.data?.status ?? 'idle');
     } catch { /* silent */ }
     setLoading(false);
   }, []);
+
+  const launchTraining = useCallback(async () => {
+    setLaunching(true);
+    try { await axios.post('/curriculum/train/start'); } catch { /* silent */ }
+    setLaunching(false);
+    refresh();
+  }, [refresh]);
 
   useEffect(() => {
     refresh();
@@ -89,9 +102,25 @@ export default function LongHorizonView() {
 
   return (
     <div className="flex flex-col gap-6 p-6 overflow-y-auto h-full">
-      <div>
-        <h2 className="text-lg font-black text-white">Long-Horizon Curriculum Learning</h2>
-        <p className="panel-label mt-0.5">10-stage progression · max_steps 100 → 1000</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-black text-white">Long-Horizon Curriculum Learning</h2>
+          <p className="panel-label mt-0.5">10-stage progression · max_steps 100 → 1000</p>
+        </div>
+        <button
+          onClick={launchTraining}
+          disabled={launching || trainStatus === 'running'}
+          className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-200"
+          style={{
+            background: trainStatus === 'running'
+              ? 'rgba(16,185,129,0.15)'
+              : launching ? 'rgba(6,182,212,0.2)' : 'rgba(6,182,212,0.8)',
+            color: trainStatus === 'running' ? '#10b981' : '#fff',
+            border: `1px solid ${trainStatus === 'running' ? 'rgba(16,185,129,0.4)' : 'rgba(6,182,212,0.5)'}`,
+            cursor: (launching || trainStatus === 'running') ? 'default' : 'pointer',
+          }}>
+          {trainStatus === 'running' ? '⬤ Training...' : launching ? 'Launching...' : '▶ Launch Training'}
+        </button>
       </div>
 
       {/* Summary KPIs */}

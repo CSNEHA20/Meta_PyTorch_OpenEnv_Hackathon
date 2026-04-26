@@ -44,10 +44,11 @@ function KpiCard({ label, value, sub, accent = '#3b82f6', icon }) {
 
 function StatusDot({ status }) {
   const map = {
-    'CONNECTED':   { color: '#10b981', label: 'Connected' },
-    'COMPLETE':    { color: '#3b82f6', label: 'Episode Done' },
-    'INITIALIZING...': { color: '#f59e0b', label: 'Initializing' },
-    'OFFLINE':     { color: '#6b7280', label: 'Offline' },
+    'CONNECTED':        { color: '#10b981', label: 'Connected' },
+    'COMPLETE':         { color: '#3b82f6', label: 'Episode Done' },
+    'INITIALIZING...':  { color: '#f59e0b', label: 'Initializing' },
+    'OFFLINE':          { color: '#6b7280', label: 'Offline' },
+    'CONNECTION ERROR': { color: '#ef4444', label: 'Reconnecting...' },
   }
   const s = map[status] || { color: '#ef4444', label: status }
   return (
@@ -79,13 +80,22 @@ export default function Dashboard() {
   useEffect(() => { autoRef.current = autoRun }, [autoRun])
   useEffect(() => { speedRef.current = speed }, [speed])
 
-  // Auto-connect and auto-run on first load
+  // Auto-connect and auto-run on first load, with retry if backend not ready
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    resetEnv().then(() => {
-      // Small delay then start auto-run for instant impressive demo
-      setTimeout(() => setAutoRun(true), 1000)
-    })
+    let cancelled = false
+    const tryConnect = async () => {
+      const ok = await resetEnv()
+      if (cancelled) return
+      if (ok) {
+        setTimeout(() => { if (!cancelled) setAutoRun(true) }, 1000)
+      } else {
+        // Retry every 3 seconds until backend is available
+        setTimeout(() => { if (!cancelled) tryConnect() }, 3000)
+      }
+    }
+    tryConnect()
+    return () => { cancelled = true }
   }, [])
 
   const resetEnv = useCallback(async () => {
@@ -97,7 +107,11 @@ export default function Dashboard() {
       const data = resp.data
       setObs(data.observation ?? data)
       setStatus('CONNECTED')
-    } catch { setStatus('CONNECTION ERROR') }
+      return true
+    } catch {
+      setStatus('CONNECTION ERROR')
+      return false
+    }
   }, [task])
 
   const stepEnv = useCallback(async () => {

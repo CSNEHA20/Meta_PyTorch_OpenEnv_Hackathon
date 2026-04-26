@@ -28,6 +28,30 @@ const nextConfig = {
         source: '/ws/:path*',
         destination: 'http://localhost:7860/ws/:path*',
       },
+      {
+        source: '/marl/:path*',
+        destination: 'http://localhost:7860/marl/:path*',
+      },
+      {
+        source: '/curriculum/:path*',
+        destination: 'http://localhost:7860/curriculum/:path*',
+      },
+      {
+        source: '/selfplay/:path*',
+        destination: 'http://localhost:7860/selfplay/:path*',
+      },
+      {
+        source: '/demo/:path*',
+        destination: 'http://localhost:7860/demo/:path*',
+      },
+      {
+        source: '/health',
+        destination: 'http://localhost:7860/health',
+      },
+      {
+        source: '/mcp',
+        destination: 'http://localhost:7860/mcp',
+      },
     ];
   },
 };
