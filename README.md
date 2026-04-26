@@ -15,7 +15,7 @@ tags:
   - pytorch
   - fastapi
 license: mit
-short_description: "Train LLMs for city-scale ambulance dispatch. GRPO+TRL, 9-component RFC 004 rubric, multi-agent RL, 3 difficulty tasks. OpenEnv hackathon."
+short_description: "Ambulance dispatch RL env with GRPO training, multi-agent support, 3 difficulty levels"
 ---
 
 <div align="center">
