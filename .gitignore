@@ -62,11 +62,10 @@ frontend/out/
 *.log
 logs/
 
-# Generated plot images (keep repo small for HF Space)
-*.png
-*.jpg
-*.jpeg
+# Generated plot images in outputs (keep repo small for HF Space)
 outputs/**/*.png
 outputs/**/*.jpg
 outputs/**/*.jpeg
+# Note: Root-level plot images (agent_comparison.png, reward_curve.png, etc.) are tracked
+# for README and blog post display. Do not add *.png here or they won't show on HF Space.
 
