@@ -436,9 +436,9 @@ Clusters failure scenarios by (λ, n_ambulances, n_hospitals). Generates targete
 
 ### GRPO LLM Training Results
 
-![GRPO Training Results](grpo_training_results.png)
-*Figure: Left — GRPO reward curve over 100 training steps (raw + 10-step moving average).
-Right — Episode reward comparison: greedy rule-based baseline vs GRPO-trained LLM
+![GRPO Training Results](grpo_reward_curve.png)
+*Figure: GRPO reward curve over training steps (raw + moving average).
+Episode reward comparison: greedy rule-based baseline vs GRPO-trained LLM
 (Qwen2.5-0.5B-Instruct, 4-bit quantised via Unsloth) on the Easy task (seed=42).
 The trained agent shows improvement over the untrained greedy baseline.*
 
@@ -680,12 +680,12 @@ Ambulance-OpenENV/
 │
 ├── colab_notebook.ipynb      # Quick-start demo (Q-agent + rubric)
 │
-└── agent_comparison.png      # Figure 1: agent performance chart
-   reward_curve.png            # Figure 2: DQN training curve
-   grpo_reward_curve.png       # Figure 3: GRPO training curve
-   grpo_before_after.png       # Figure 4: GRPO before/after comparison
-   rubric_breakdown.png        # Figure 5: RFC 004 component breakdown
-   training_curve.png          # Figure 6: additional training evidence
+├── agent_comparison.png      # Figure 1: agent performance chart
+├── reward_curve.png          # Figure 2: DQN training curve
+├── grpo_reward_curve.png     # Figure 3: GRPO training curve
+├── grpo_before_after.png     # Figure 4: GRPO before/after comparison
+├── rubric_breakdown.png      # Figure 5: RFC 004 component breakdown
+└── training_curve.png        # Figure 6: additional training evidence
 ```
 
 ---
