@@ -1,0 +1,11 @@
+# Prevent HF Space from tracking PNG files with Git LFS
+*.png -text diff
+*.jpg -text diff
+*.jpeg -text diff
+*.gif -text diff
+
+# Don't track model files with LFS
+*.pth -text
+*.pt -text
+*.ckpt -text
+*.safetensors -text
